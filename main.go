@@ -7,9 +7,11 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 )
 
+var logAccess = flag.Bool("logAccess", false, "log access")
 var queryTimeout = flag.Duration("queryTimeout", time.Minute, "maximum amount of a query is allowed to process")
 var staticPath = flag.String("static", "static", "path to static data")
 
@@ -84,5 +86,32 @@ func defaultHandler(parts []string, w http.ResponseWriter, req *http.Request) {
 
 func optionsHandler(parts []string, w http.ResponseWriter, req *http.Request) {
 	methods := []string{}
-	for _, r :=
+	for _, r := range routingTable {
+		if len(r.Path.FindAllStringSubmatch(req.URL.Path, 1)) > 0 {
+			methods = append(methods, r.Method)
+		}
+	}
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", strings.Join(methods, ", "))
+	w.WriteHeader(204)
+}
+
+func findHandler(method, path string) (routingEntry, []string) {
+	for _, r := range routingTable {
+		if r.Method == method {
+			matches := r.Path.FindAllStringSubmatch(path, 1)
+			if len(matches) > 0 {
+				return r, matches[0][1:]
+			}
+		}
+	}
+	return routingEntry{"DEFAULT", nil, defaultHandler, defaultDeadline}, []string{}
+}
+
+func handler(w http.ResponseWriter, req *http.Request) {
+	if *logAccess {
+		log.Printf("%s %s %v", req.RemoteAddr, req.Method, req.URL)
+	}
+	route, hparts := findHandler(req.Method, req.URL.Path)
+	defer yellow.Deadlinelog()
 }
