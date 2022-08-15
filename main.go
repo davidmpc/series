@@ -9,10 +9,12 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"regexp"
 	"runtime"
 	"runtime/pprof"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/dustin/yellow"
@@ -233,4 +235,36 @@ func main() {
 			go cacheProcessor(cacheInput, cacheInputSet)
 		}
 	}
+
+	queryInput = make(chan *queryIn, *queryBacklog)
+	for i := 0; i < *queryWorkers; i++ {
+		go queryExecutor()
+	}
+	if *pprofFile != "" {
+		go startProfile()
+	}
+
+	listeners := []net.Listener{}
+	if *mcaddr != "" {
+		listeners = append(listeners, listenMC(*mcaddr))
+	}
+
+	s := http.Server{
+		Addr:        *addr,
+		Handler:     http.HandlerFunc(handler),
+		ReadTimeout: 5 * time.Second,
+	}
+	log.Printf("listening to web requests on %s", *addr)
+	l := listener(*addr)
+	listeners = append(listeners, l)
+
+	sigch := make(chan os.Signal, 1)
+	signal.Notify(sigch, syscall.SIGINT, syscall.SIGTERM)
+	go shutdownHandler(listeners, sigch)
+
+	err := s.Serve(l)
+	log.Printf("web server finished with %v", err)
+
+	log.Printf("waiting for database to finish")
+	dbWg.Wait()
 }

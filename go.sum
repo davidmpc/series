@@ -1,2 +1,10 @@
+github.com/dustin/gomemcached v0.0.0-20160817010731-a2284a01c143 h1:K9CFK8HRZWzmoIWbpA7u0XYLggCyfa/N77eVaq/nUiA=
+github.com/dustin/gomemcached v0.0.0-20160817010731-a2284a01c143/go.mod h1:BLhrehfVmtABJWBZTJV8HyPWCSZoiMzjjcZ3+vHHhPI=
 github.com/dustin/yellow v0.0.0-20140729025043-2ce7236602be h1:DZ8SAQ00fh7WP4xeSyBI3axJp/zGuqWB7UqEQ9HhwOM=
 github.com/dustin/yellow v0.0.0-20140729025043-2ce7236602be/go.mod h1:rVYQx0MWmw9W+cHID/4Eo8GPxI7/nLfQOzgg7BTcMVg=
+github.com/golang/snappy v0.0.4 h1:yAGX7huGHXlcLOEtBnF4w7FQwA26wojNCwOYAEhLjQM=
+github.com/golang/snappy v0.0.4/go.mod h1:/XxbfmMg8lxefKM7IXC3fBNl/7bRcc72aCRzEWrmP2Q=
+github.com/mschoch/gouchstore v0.0.0-20151012155121-ebc3bea732ff h1:0+Y84ybhsHTO/hcGSPURFaOrPlex+k2r3vCjIm4QXas=
+github.com/mschoch/gouchstore v0.0.0-20151012155121-ebc3bea732ff/go.mod h1:Og0P4z6UlOfm+5QQ8xB1Z9amlpMmtQgyiWUBDNwLEEM=
+github.com/mschoch/mergesort v0.0.0-20140321150500-46d4b13617d1 h1:wVPBgrtNTXCgXxjR+rX3RDcLQWRI6m7iVMj0T0JZ0+Q=
+github.com/mschoch/mergesort v0.0.0-20140321150500-46d4b13617d1/go.mod h1:IPExho5x4gyRel+yHK6qKjDu2snAEOKYrRqk7MFHjMc=
