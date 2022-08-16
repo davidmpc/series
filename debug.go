@@ -1,0 +1,84 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"github.com/mschoch/gouchstore"
+	"log"
+	"net/http"
+	"runtime"
+	"sync"
+	"sync/atomic"
+)
+
+type frameSnap []uintptr
+
+func (f frameSnap) MarshalJSON() ([]byte, error) {
+	var frames []string
+	for _, pc := range f {
+		frame := runtime.FuncForPC(pc)
+		fn, line := frame.FileLine(frame.Entry())
+		frames = append(frames, fmt.Sprintf("%v() - %v:%v", frame.Name(), fn, line))
+	}
+	return json.Marshal(frames)
+}
+
+type dbOpenState struct {
+	path  string
+	funcs frameSnap
+}
+
+var openConnLock = sync.Mutex{}
+var openConns = map[*gouchstore.Gouchstore]dbOpenState{}
+
+func recordDBConn(path string, db *gouchstore.Gouchstore) {
+	callers := make([]uintptr, 32)
+	n := runtime.Callers(2, callers)
+	openConnLock.Lock()
+	openConns[db] = dbOpenState{path, callers[:n-1]}
+	openConnLock.Unlock()
+}
+
+func closeDBConn(db *gouchstore.Gouchstore) {
+	db.Close()
+	openConnLock.Lock()
+	_, ok := openConns[db]
+	delete(openConns, db)
+	openConnLock.Unlock()
+	if !ok {
+		log.Printf("closeing untracked DB: %p", db)
+	}
+}
+
+func debugListOpenDBs(parts []string, w http.ResponseWriter, req *http.Request) {
+	openConnLock.Lock()
+	snap := map[string][]frameSnap{}
+	for _, st := range openConns {
+		snap[st.path] = append(snap[st.path], st.funcs)
+	}
+	openConnLock.Unlock()
+	mustEncode(200, w, snap)
+}
+
+type dbStat struct {
+	written             uint64
+	qlen, opens, closes uint32
+}
+
+func (d *dbStat) MarshalJSON() ([]byte, error) {
+	m := map[string]interface{}{}
+	m["written"] = atomic.LoadUint64(&d.written)
+	m["qlen"] = atomic.LoadUint32(&d.qlen)
+	m["opens"] = atomic.LoadUint32(&d.opens)
+	m["closes"] = atomic.LoadUint32(&d.closes)
+	return json.Marshal(m)
+}
+
+type databaseStats struct {
+	m  map[string]*dbStat
+	mu sync.Mutex
+}
+
+func newQueueMap() *databaseStats {
+	return &databaseStats{m: map[string]*dbStat{}}
+}

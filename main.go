@@ -20,6 +20,8 @@ import (
 	"github.com/dustin/yellow"
 )
 
+var flushTime = flag.Duration("flushDelay", time.Second*5, "maximum amount of time to wait before flushing")
+var liveTime = flag.Duration("liveTime", time.Minute*5, "how long to keep an idle DB open")
 var docBacklog = flag.Int("docBacklog", 0, "MR group request backlog size")
 var queryBacklog = flag.Int("queryBacklog", 0, "query scan/group backlog size")
 var cacheAddr = flag.String("memcache", "", "memcached server to connect to")
