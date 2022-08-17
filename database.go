@@ -164,11 +164,11 @@ func dbCompact(dq *dbWriter, bulk gouchstore.BulkWriter, queued int, qi dbqitem)
 
 var dbWg = sync.WaitGroup{}
 
-func dbWriteLoop(dq *dbWriter) {
+func dbWriteLoop(dw *dbWriter) {
 	defer dbWg.Done()
 
 	queued := 0
-	bulk := dq.db.Bulk()
+	bulk := dw.db.Bulk()
 
 	t := time.NewTimer(*flushTime)
 	defer t.Stop()
@@ -176,18 +176,33 @@ func dbWriteLoop(dq *dbWriter) {
 	defer liveTracker.Stop()
 	liveOps := 0
 
-	dbst := dbStats.getOrCreate(dq.dbname)
+	dbst := dbStats.getOrCreate(dw.dbname)
 	defer atomic.StoreUint32(&dbst.qlen, 0)
 	defer atomic.AddUint32(&dbst.closes, 1)
 
 	for {
 		atomic.StoreUint32(&dbst.qlen, uint32(queued))
 		select {
-		case <-dq.quit:
-			sdt := time.Now()
+		case <-dw.quit:
+			start := time.Now()
 			bulk.Commit()
 			bulk.Close()
-			closeDBConn(dq.db)
+			closeDBConn(dw.db)
+			dbRemoveConn(dw.dbname)
+			log.Printf("closed %v with %v items in %v", dw.dbname, queued, time.Since(start))
+			return
+		case <-liveTracker.C:
+			if queued == 0 && liveOps == 0 {
+				log.Printf("closing idle DB: %v", dw.dbname)
+				close(dw.quit)
+			}
+		case qi := <-dw.ch:
+			liveOps++
+			switch qi.op {
+			case opStoreItem:
+				bulk.Set(gouchstore.NewDocumentInfo(qi.k), gouchstore.NewDocument(qi.k, qi.data))
+				queued++
+			}
 		}
 	}
 }

@@ -2,11 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"expvar"
 	"fmt"
 	"github.com/mschoch/gouchstore"
 	"log"
 	"net/http"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -81,4 +83,37 @@ type databaseStats struct {
 
 func newQueueMap() *databaseStats {
 	return &databaseStats{m: map[string]*dbStat{}}
+}
+
+func (q *databaseStats) getOrCreate(name string) *dbStat {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	rv, ok := q.m[name]
+	if !ok {
+		rv = &dbStat{}
+		q.m[name] = rv
+	}
+	atomic.AddUint32(&rv.opens, 1)
+	return rv
+}
+
+func (q *databaseStats) String() string {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	d, err := json.Marshal(q.m)
+	if err != nil {
+		log.Fatalf("error marshaling queueMap : %v", err)
+	}
+	return string(d)
+}
+
+var dbStats = newQueueMap()
+
+func init() {
+	expvar.Publish("dbs", dbStats)
+}
+
+func debugVars(parts []string, w http.ResponseWriter, req *http.Request) {
+	req.URL.Path = strings.Replace(req.URL.Path, "/_debug/vars", "/debug/vars", 1)
+	http.DefaultServeMux.ServeHTTP(w, req)
 }
