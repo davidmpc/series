@@ -71,7 +71,7 @@ func dbBase(n string) string {
 	return n[left:right]
 }
 
-func dbOpen(name string) (*gouchstore.Gouchstore, error) {
+func dbopen(name string) (*gouchstore.Gouchstore, error) {
 	path := dbPath(name)
 	db, err := gouchstore.Open(dbPath(name), 0)
 	if err == nil {
@@ -155,7 +155,7 @@ func dbCompact(dq *dbWriter, bulk gouchstore.BulkWriter, queued int, qi dbqitem)
 	log.Printf("reopening post-compact")
 	closeDBConn(dq.db)
 
-	dq.db, err = dbOpen(dq.dbname)
+	dq.db, err = dbopen(dq.dbname)
 	if err != nil {
 		log.Fatalf("error reopening DB after compaction : %v", err)
 	}
@@ -202,7 +202,104 @@ func dbWriteLoop(dw *dbWriter) {
 			case opStoreItem:
 				bulk.Set(gouchstore.NewDocumentInfo(qi.k), gouchstore.NewDocument(qi.k, qi.data))
 				queued++
+			case opDeleteItem:
+				queued++
+				bulk.Delete(gouchstore.NewDocumentInfo(qi.k))
+			case opCompact:
+				var err error
+				bulk, err = dbCompact(dw, bulk, queued, qi)
+				qi.cherr <- err
+				atomic.AddUint64(&dbst.written, uint64(queued))
+				queued = 0
+			default:
+				log.Panicf("unhandled case : %v", qi.op)
 			}
+			if queued >= *maxOpQueue {
+				start := time.Now()
+				bulk.Commit()
+				log.Printf("flush of %d items took %v", queued, time.Since(start))
+			}
+			atomic.AddUint64(&dbst.written, uint64(queued))
+			queued = 0
+			t.Reset(*flushTime)
+		case <-t.C:
+			if queued > 0 {
+				start := time.Now()
+				bulk.Commit()
+				log.Printf("flush of %d items from timer took %v", queued, time.Since(start))
+				atomic.AddUint64(&dbst.written, uint64(queued))
+				queued = 0
+			}
+			t.Reset(*flushTime)
 		}
 	}
+}
+
+func dbWriteFun(dbname string) (*dbWriter, error) {
+	db, err := dbopen(dbname)
+	if err != nil {
+		return nil, err
+	}
+	writer := &dbWriter{
+		dbname: dbname,
+		ch:     make(chan dbqitem, *maxOpQueue),
+		quit:   make(chan bool),
+		db:     db,
+	}
+	dbWg.Add(1)
+	go dbWriteLoop(writer)
+
+	return writer, nil
+}
+
+func getOrCreateDB(dbname string) (*dbWriter, bool, error) {
+	dbLock.Lock()
+	defer dbLock.Unlock()
+
+	writer := dbConns[dbname]
+	var err error
+	opened := false
+	if writer == nil {
+		writer, err = dbWriteFun(dbname)
+		if err != nil {
+			return nil, false, err
+		}
+		dbConns[dbname] = writer
+		opened = true
+	}
+	return writer, opened, nil
+}
+
+func dbstore(dbname string, k string, body []byte) error {
+	writer, _, err := getOrCreateDB(dbname)
+	if err != nil {
+		return err
+	}
+	writer.ch <- dbqitem{dbname, k, body, opStoreItem, nil}
+	return nil
+}
+
+func dbcompact(dbname string) error {
+	writer, opened, err := getOrCreateDB(dbname)
+	if err != nil {
+		return err
+	}
+	if opened {
+		log.Printf("requesting post-compaction close of %v", dbname)
+		defer writer.Close()
+	}
+
+	cherr := make(chan error)
+	defer close(cherr)
+	writer.ch <- dbqitem{dbname: dbname, op: opCompact, cherr: cherr}
+	return <-cherr
+}
+
+func dbGetDoc(dbname, id string) ([]byte, error) {
+	db, err := dbopen(dbname)
+	if err != nil {
+		log.Printf("error opening db: %v - %v", dbname, err)
+		return nil, err
+	}
+	defer closeDBConn(db)
 }

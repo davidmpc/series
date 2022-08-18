@@ -38,6 +38,7 @@ var staticPath = flag.String("static", "static", "path to static data")
 var addr = flag.String("addr", ":3133", "address to bind to")
 var mcaddr = flag.String("memcbind", "", "")
 var useSyslog = flag.Bool("useSyslog", true, "log to syslog")
+var maxOpQueue = flag.Int("maxOpQueue", 1000, "maximum number of queued items before flushing")
 
 type routeHandler func(parts []string, w http.ResponseWriter, req *http.Request)
 
