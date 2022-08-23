@@ -3,10 +3,10 @@ package main
 import (
 	"github.com/dustin/gomemcached"
 	memcached "github.com/dustin/gomemcached/server"
-	"github.com/dustin/timelib"
 	"io"
 	"log"
 	"net"
+	"series/timelib"
 	"time"
 )
 
@@ -32,7 +32,7 @@ func (sess *mcSession) HandleMessage(w io.Writer, req *gomemcached.MCRequest) *g
 		if fk == "" {
 			k = time.Now().UTC().Format(time.RFC3339Nano)
 		} else {
-			t, err := timelib.Parse(fk)
+			t, err := timelib.ParseTime(fk)
 			if err != nil {
 				return &gomemcached.MCResponse{
 					Status: gomemcached.EINVAL,

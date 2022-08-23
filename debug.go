@@ -42,7 +42,6 @@ func recordDBConn(path string, db *gouchstore.Gouchstore) {
 }
 
 func closeDBConn(db *gouchstore.Gouchstore) {
-	db.Close()
 	openConnLock.Lock()
 	_, ok := openConns[db]
 	delete(openConns, db)

@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"series/timelib"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -80,12 +81,18 @@ func dbopen(name string) (*gouchstore.Gouchstore, error) {
 	return db, err
 }
 
+func dbclose(db *gouchstore.Gouchstore) {
+	db.Close()
+	closeDBConn(db)
+}
+
 func dbcreate(path string) error {
 	db, err := gouchstore.Open(path, gouchstore.OPEN_CREATE)
 	if err != nil {
 		return err
 	}
 	recordDBConn(path, db)
+	db.Close()
 	closeDBConn(db)
 	return nil
 }
@@ -113,6 +120,7 @@ func dbCloseAll() {
 
 func dbdelete(name string) error {
 	dbRemoveConn(name)
+	// fixme? should wait and then remove DB
 	return os.Remove(dbPath(name))
 }
 
@@ -153,7 +161,7 @@ func dbCompact(dq *dbWriter, bulk gouchstore.BulkWriter, queued int, qi dbqitem)
 		return dq.db.Bulk(), err
 	}
 	log.Printf("reopening post-compact")
-	closeDBConn(dq.db)
+	dbclose(dq.db)
 
 	dq.db, err = dbopen(dq.dbname)
 	if err != nil {
@@ -187,7 +195,7 @@ func dbWriteLoop(dw *dbWriter) {
 			start := time.Now()
 			bulk.Commit()
 			bulk.Close()
-			closeDBConn(dw.db)
+			dbclose(dw.db)
 			dbRemoveConn(dw.dbname)
 			log.Printf("closed %v with %v items in %v", dw.dbname, queued, time.Since(start))
 			return
@@ -301,5 +309,44 @@ func dbGetDoc(dbname, id string) ([]byte, error) {
 		log.Printf("error opening db: %v - %v", dbname, err)
 		return nil, err
 	}
-	defer closeDBConn(db)
+	defer dbclose(db)
+
+	doc, err := db.DocumentById(id)
+	if err != nil {
+		return nil, err
+	}
+	return doc.Body, err
+}
+
+func dbwalk(dbname, from, to string, f func(k string, v []byte) error) error {
+	db, err := dbopen(dbname)
+	if err != nil {
+		log.Printf("error opening db: %v - %v", dbname, err)
+	}
+	defer dbclose(db)
+
+	return db.WalkDocs(from, to, func(d *gouchstore.Gouchstore, di *gouchstore.DocumentInfo, doc *gouchstore.Document) error {
+		return f(di.ID, doc.Body)
+	})
+}
+
+func dbwalkkeys(dbname, from, to string, f func(k string) error) error {
+	db, err := dbopen(dbname)
+	if err != nil {
+		log.Printf("error opening db: %v - %v", dbname, err)
+		return err
+	}
+	defer dbclose(db)
+
+	return db.AllDocuments(from, to, func(db *gouchstore.Gouchstore, di *gouchstore.DocumentInfo, userContext interface{}) error {
+		return f(di.ID)
+	}, nil)
+}
+
+func parseKeys(s string) int64 {
+	t, err := timelib.ParseCanonicalTime(s)
+	if err != nil {
+		return -1
+	}
+	return t.UnixNano()
 }

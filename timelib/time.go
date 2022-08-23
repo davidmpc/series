@@ -102,7 +102,7 @@ func ParseCanonicalTime(in string) (time.Time, error) {
 		hour, minute, second, nsec, time.UTC), nil
 }
 
-func parseTime(in string) (time.Time, error) {
+func ParseTime(in string) (time.Time, error) {
 	n, err := strconv.ParseInt(in, 10, 64)
 	if err == nil {
 		switch {
